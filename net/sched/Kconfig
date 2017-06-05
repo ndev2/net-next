@@ -229,6 +229,17 @@ config NET_SCH_MQPRIO
 
 	  If unsure, say N.
 
+config NET_SCH_GKPRIOQ
+	tristate "Gatekeeper DoS Defense priority queue scheduler (GKPRIOQ)"
+	help
+	  Say Y here if you want to use the Gatekeeper Priority Queue scheduler.
+	  This scheduler is useful for DoS mitigation.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called sch_gkprioq.
+
+	  If unsure, say N.
+
 config NET_SCH_CHOKE
 	tristate "CHOose and Keep responsive flow scheduler (CHOKE)"
 	help
