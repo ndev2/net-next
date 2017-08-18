@@ -124,6 +124,17 @@ struct tc_fifo_qopt {
 	__u32	limit;	/* Queue length: bytes for bfifo, packets for pfifo */
 };
 
+/* GKPRIO section */
+
+struct tc_gkprio_qopt {
+	__u32	limit; 	    	/* Queue length in packets. */
+	__u16	noip_dfltp; 	/* Default priority for non-IP packets. */
+
+	/* Stats. */
+	__u16 highest_prio; 	/* Highest priority currently in queue.  */
+	__u16 lowest_prio;  	/* Lowest priority currently in queue. */
+};
+
 /* PRIO section */
 
 #define TCQ_PRIO_BANDS	16
