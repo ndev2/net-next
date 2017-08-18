@@ -240,6 +240,19 @@ config NET_SCH_MQPRIO
 
 	  If unsure, say N.
 
+config NET_SCH_DSPRIO
+	tristate "DS priority queue scheduler (DSPRIO)"
+	help
+	  Say Y here if you want to use the DS priority queue
+	  scheduler. This schedules packets according to priorities based on
+	  the DSCP (IPv4) and DS (IPv6) fields, which is useful for request
+	  packets in DoS mitigation systems such as DSprio.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called sch_dsprio.
+
+	  If unsure, say N.
+
 config NET_SCH_CHOKE
 	tristate "CHOose and Keep responsive flow scheduler (CHOKE)"
 	help
