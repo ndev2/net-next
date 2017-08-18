@@ -124,6 +124,15 @@ struct tc_fifo_qopt {
 	__u32	limit;	/* Queue length: bytes for bfifo, packets for pfifo */
 };
 
+/* DSPRIO section */
+
+#define DSPRIO_MAX_PRIORITY 64
+
+struct tc_dsprio_qopt {
+	__u32	limit; 	    	/* Queue length in packets. */
+	__u16	noip_dfltp; 	/* Default priority for non-IP packets. */
+};
+
 /* PRIO section */
 
 #define TCQ_PRIO_BANDS	16
