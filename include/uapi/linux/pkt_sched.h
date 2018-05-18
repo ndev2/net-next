@@ -131,12 +131,15 @@ struct tc_fifo_qopt {
 struct tc_dsprio_qopt {
 	__u32	limit; 	    	/* Queue length in packets. */
 	__u16	noip_dfltp; 	/* Default priority for non-IP packets. */
+<<<<<<< HEAD
 
 	/* Stats. */
 	__u32 qlen[DSPRIO_MAX_PRIORITY - 1]; /* Individual dsprio queue
 						lengths. */
 	__u16 highest_prio; 	/* Highest priority currently in queue. */
 	__u16 lowest_prio;  	/* Lowest priority currently in queue. */
+=======
+>>>>>>> e2aa5df83abf00b41495e288fa2cbd9a14357b33
 };
 
 /* PRIO section */
