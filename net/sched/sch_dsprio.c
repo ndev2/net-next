@@ -59,7 +59,7 @@ struct dsprio_sched_data {
 	u16 noip_dfltp;
 
 	/* Queue state. */
-	struct sk_buff_head qdiscs[DSPRIO_MAX_PRIORITY - 1];
+	struct sk_buff_head qdiscs[DSPRIO_MAX_PRIORITY];
 	u16 highest_prio;
 	u16 lowest_prio;
 };
@@ -315,7 +315,6 @@ static int dsprio_dump_class_stats(struct Qdisc *sch, unsigned long cl,
 
 static void dsprio_walk(struct Qdisc *sch, struct qdisc_walker *arg)
 {
-	struct dsprio_sched_data *q = qdisc_priv(sch);
 	unsigned int i;
 
 	if (arg->stop)
