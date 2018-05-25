@@ -60,6 +60,7 @@ struct dsprio_sched_data {
 
 	/* Queue state. */
 	struct sk_buff_head qdiscs[DSPRIO_MAX_PRIORITY];
+	struct gnet_stats_queue qstats[DSPRIO_MAX_PRIORITY];
 	u16 highest_prio;
 	u16 lowest_prio;
 };
@@ -129,6 +130,7 @@ static int dsprio_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	if (sch->q.qlen < q->max_limit) {
 		__skb_queue_tail(qdisc, skb);
 		qdisc_qstats_backlog_inc(sch, skb);
+		q->qstats[prio].backlog += qdisc_pkt_len(skb);
 
 		/* Check to update highest and lowest priorities. */
 		if (prio > q->highest_prio)
@@ -138,13 +140,16 @@ static int dsprio_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 			q->lowest_prio = prio;
 
 		sch->q.qlen++;
+		q->qstats[prio].qlen++;
 		return NET_XMIT_SUCCESS;
 	}
 
 	/* If this packet has the lowest priority, drop it. */
 	lp = q->lowest_prio;
-	if (prio <= lp)
+	if (prio <= lp) {
+		q->qstats[lp].drops++;
 		return qdisc_drop(skb, sch, to_free);
+	}
 
 	/* Drop the packet at the tail of the lowest priority qdisc. */
 	lp_qdisc = &q->qdiscs[lp];
@@ -153,11 +158,18 @@ static int dsprio_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	qdisc_qstats_backlog_dec(sch, to_drop);
 	qdisc_drop(to_drop, sch, to_free);
 
+	q->qstats[lp].backlog -= qdisc_pkt_len(to_drop);
+	q->qstats[lp].qlen--;
+	q->qstats[lp].drops++;
+
 	__skb_queue_tail(qdisc, skb);
 	qdisc_qstats_backlog_inc(sch, skb);
+	q->qstats[prio].backlog += qdisc_pkt_len(to_drop);
+	q->qstats[lp].qlen++;
 
 	/* Check to update highest and lowest priorities. */
 	if (skb_queue_empty(lp_qdisc)) {
+		BUG_ON(q->qstats[lp].qlen);
 		if (q->lowest_prio == q->highest_prio) {
 			BUG_ON(sch->q.qlen);
 			q->lowest_prio = prio;
@@ -189,8 +201,12 @@ static struct sk_buff *dsprio_dequeue(struct Qdisc *sch)
 	qdisc_qstats_backlog_dec(sch, skb);
 	qdisc_bstats_update(sch, skb);
 
+	q->qstats[q->highest_prio].qlen--;
+	q->qstats[q->highest_prio].backlog -= qdisc_pkt_len(skb);
+
 	/* Update highest priority field. */
 	if (skb_queue_empty(hpq)) {
+		BUG_ON(q->qstats[q->highest_prio].qlen);
 		if (q->lowest_prio == q->highest_prio) {
 			BUG_ON(sch->q.qlen);
 			q->highest_prio = 0;
@@ -234,9 +250,10 @@ static int dsprio_init(struct Qdisc *sch, struct nlattr *opt,
 	unsigned int min_limit = 1;
 
 	/* Initialise all queues, one for each possible priority. */
-	for (prio = 0; prio < DSPRIO_MAX_PRIORITY; prio++)
+	for (prio = 0; prio < DSPRIO_MAX_PRIORITY; prio++) {
 		__skb_queue_head_init(&q->qdiscs[prio]);
-
+		memset(&q->qstats[prio], 0, sizeof(q->qstats[prio]));
+	}
 	q->highest_prio = 0;
 	q->lowest_prio = DSPRIO_MAX_PRIORITY - 1;
 	if (!opt) {
@@ -269,8 +286,10 @@ static void dsprio_reset(struct Qdisc *sch)
 	sch->qstats.backlog = 0;
 	sch->q.qlen = 0;
 
-	for (prio = 0; prio < DSPRIO_MAX_PRIORITY; prio++)
+	for (prio = 0; prio < DSPRIO_MAX_PRIORITY; prio++) {
 		__skb_queue_purge(&q->qdiscs[prio]);
+		memset(&q->qstats[prio], 0, sizeof(q->qstats[prio]));
+	}
 	q->highest_prio = 0;
 	q->lowest_prio = DSPRIO_MAX_PRIORITY - 1;
 }
@@ -305,10 +324,8 @@ static int dsprio_dump_class_stats(struct Qdisc *sch, unsigned long cl,
 				   struct gnet_dump *d)
 {
 	struct dsprio_sched_data *q = qdisc_priv(sch);
-	struct gnet_stats_queue qs = { 0 };
-
-	if (gnet_stats_copy_queue(d, NULL, &qs,
-		skb_queue_len(&q->qdiscs[cl - 1])) < 0)
+	if (gnet_stats_copy_queue(d, NULL, &q->qstats[cl - 1],
+		q->qstats[cl - 1].qlen) < 0)
 		return -1;
 	return 0;
 }
