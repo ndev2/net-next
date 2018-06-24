@@ -1,0 +1,24 @@
+SKB Priority Queue
+==================
+ 
+This qdisc schedules a packet according to skb->priority, where a higher
+value places the packet closer to the exit of the queue. When the queue is
+full, the lowest priority packet in the queue is dropped to make room for
+the packet to be added if it has higher priority. If the packet to be added
+has lower priority than all packets in the queue, it is dropped.
+ 
+Without the SKB priority queue, queue length limits must be imposed
+for individual queues, and there is no easy way to enforce a global queue
+length limit across all priorities. With the SKBprio queue, a global
+queue length limit can be enforced while not restricting the queue lengths
+of individual priorities.
+ 
+This is especially useful for a denial-of-service defense system like
+Gatekeeper, which prioritizes packets in flows that demonstrate expected
+behavior of legitimate users. The queue is flexible to allow any number
+of packets of any priority up to the global limit of the scheduler
+without risking resource overconsumption by a flood of low priority packets.
+  
+The Gatekeeper codebase is found here:
+
+		https://github.com/AltraMayor/gatekeeper

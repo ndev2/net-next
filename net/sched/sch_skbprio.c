@@ -22,37 +22,18 @@
 #include <net/sch_generic.h>
 #include <net/inet_ecn.h>
 
-
 /*	  SKB Priority Queue
  *	=================================
  *
- * This qdisc schedules a packet according to skb->priority, where a higher
- * value places the packet closer to the exit of the queue. When the queue is
- * full, the lowest priority packet in the queue is dropped to make room for
- * the packet to be added if it has higher priority. If the packet to be added
- * has lower priority than all packets in the queue, it is dropped.
- *
- * Without the SKB priority queue, queue length limits must be imposed
- * for individual queues, and there is no easy way to enforce a global queue
- * length limit across all priorities. With the SKBprio queue, a global
- * queue length limit can be enforced while not restricting the queue lengths
- * of individual priorities.
- *
- * This is especially useful for a denial-of-service defense system like
- * Gatekeeper, which prioritizes packets in flows that demonstrate expected
- * behavior of legitimate users. The queue is flexible to allow any number
- * of packets of any priority up to the global limit of the scheduler
- * without risking resource overconsumption by a flood of low priority packets.
- *
- * The Gatekeeper codebase is found here:
- *
- *		https://github.com/AltraMayor/gatekeeper
+ * Skbprio (SKB Priority Queue) is a queueing discipline that prioritizes
+ * packets according to their skb->priority field. Under congestion,
+ * already-enqueued lower priority packets will be dropped to make space
+ * available for higher priority packets. Skbprio was conceived as a solution
+ * for denial-of-service defenses that need to route packets with different
+ * priorities as a mean to overcome DoS attacks.
  */
 
 struct skbprio_sched_data {
-	/* Parameters. */
-	u32 max_limit;
-
 	/* Queue state. */
 	struct sk_buff_head qdiscs[SKBPRIO_MAX_PRIORITY];
 	struct gnet_stats_queue qstats[SKBPRIO_MAX_PRIORITY];
@@ -102,7 +83,7 @@ static int skbprio_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	prio = min(skb->priority, max_priority);
 
 	qdisc = &q->qdiscs[prio];
-	if (sch->q.qlen < q->max_limit) {
+	if (sch->q.qlen < sch->limit) {
 		__skb_queue_tail(qdisc, skb);
 		qdisc_qstats_backlog_inc(sch, skb);
 		q->qstats[prio].backlog += qdisc_pkt_len(skb);
@@ -122,8 +103,13 @@ static int skbprio_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	lp = q->lowest_prio;
 	if (prio <= lp) {
 		q->qstats[prio].drops++;
+		q->qstats[prio].overlimits++;
 		return qdisc_drop(skb, sch, to_free);
 	}
+
+	__skb_queue_tail(qdisc, skb);
+	qdisc_qstats_backlog_inc(sch, skb);
+	q->qstats[prio].backlog += qdisc_pkt_len(skb);
 
 	/* Drop the packet at the tail of the lowest priority qdisc. */
 	lp_qdisc = &q->qdiscs[lp];
@@ -134,15 +120,13 @@ static int skbprio_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 
 	q->qstats[lp].backlog -= qdisc_pkt_len(to_drop);
 	q->qstats[lp].drops++;
-
-	__skb_queue_tail(qdisc, skb);
-	qdisc_qstats_backlog_inc(sch, skb);
-	q->qstats[prio].backlog += qdisc_pkt_len(skb);
+	q->qstats[lp].overlimits++;
 
 	/* Check to update highest and lowest priorities. */
 	if (skb_queue_empty(lp_qdisc)) {
 		if (q->lowest_prio == q->highest_prio) {
-			BUG_ON(sch->q.qlen);
+			/* The incoming packet is the only packet in queue. */
+			BUG_ON(sch->q.qlen != 1);
 			q->lowest_prio = prio;
 			q->highest_prio = prio;
 		} else {
@@ -192,12 +176,11 @@ static int skbprio_change(struct Qdisc *sch, struct nlattr *opt,
 	const unsigned int min_limit = 1;
 
 	if (ctl->limit == (typeof(ctl->limit))-1)
-		q->max_limit = max(qdisc_dev(sch)->tx_queue_len, min_limit);
-	else if (ctl->limit < min_limit ||
-		ctl->limit > qdisc_dev(sch)->tx_queue_len)
+		sch->limit = max(qdisc_dev(sch)->tx_queue_len, min_limit);
+	else if (ctl->limit < min_limit)
 		return -EINVAL;
 	else
-		q->max_limit = ctl->limit;
+		sch->limit = ctl->limit;
 
 	return 0;
 }
@@ -217,7 +200,7 @@ static int skbprio_init(struct Qdisc *sch, struct nlattr *opt,
 	q->highest_prio = 0;
 	q->lowest_prio = SKBPRIO_MAX_PRIORITY - 1;
 	if (!opt) {
-		q->max_limit = max(qdisc_dev(sch)->tx_queue_len, min_limit);
+		sch->limit = max(qdisc_dev(sch)->tx_queue_len, min_limit);
 		return 0;
 	}
 	return skbprio_change(sch, opt, extack);
@@ -228,7 +211,7 @@ static int skbprio_dump(struct Qdisc *sch, struct sk_buff *skb)
 	struct skbprio_sched_data *q = qdisc_priv(sch);
 	struct tc_skbprio_qopt opt;
 
-	opt.limit = q->max_limit;
+	opt.limit = sch->limit;
 
 	if (nla_put(skb, TCA_OPTIONS, sizeof(opt), &opt))
 		return -1;

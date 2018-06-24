@@ -136,7 +136,7 @@ struct tc_fifo_qopt {
 #define SKBPRIO_MAX_PRIORITY 64
 
 struct tc_skbprio_qopt {
-	__u32	limit; 	    	/* Queue length in packets. */
+	__u32	limit;		/* Queue length in packets. */
 };
 
 /* PRIO section */
