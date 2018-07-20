@@ -171,17 +171,9 @@ static struct sk_buff *skbprio_dequeue(struct Qdisc *sch)
 static int skbprio_change(struct Qdisc *sch, struct nlattr *opt,
 			struct netlink_ext_ack *extack)
 {
-	struct skbprio_sched_data *q = qdisc_priv(sch);
 	struct tc_skbprio_qopt *ctl = nla_data(opt);
-	const unsigned int min_limit = 1;
 
-	if (ctl->limit == (typeof(ctl->limit))-1)
-		sch->limit = max(qdisc_dev(sch)->tx_queue_len, min_limit);
-	else if (ctl->limit < min_limit)
-		return -EINVAL;
-	else
-		sch->limit = ctl->limit;
-
+	sch->limit = ctl->limit;
 	return 0;
 }
 
@@ -189,7 +181,6 @@ static int skbprio_init(struct Qdisc *sch, struct nlattr *opt,
 			struct netlink_ext_ack *extack)
 {
 	struct skbprio_sched_data *q = qdisc_priv(sch);
-	const unsigned int min_limit = 1;
 	int prio;
 
 	/* Initialise all queues, one for each possible priority. */
@@ -199,16 +190,15 @@ static int skbprio_init(struct Qdisc *sch, struct nlattr *opt,
 	memset(&q->qstats, 0, sizeof(q->qstats));
 	q->highest_prio = 0;
 	q->lowest_prio = SKBPRIO_MAX_PRIORITY - 1;
-	if (!opt) {
-		sch->limit = max(qdisc_dev(sch)->tx_queue_len, min_limit);
+	sch->limit = 64;
+	if (!opt)
 		return 0;
-	}
+
 	return skbprio_change(sch, opt, extack);
 }
 
 static int skbprio_dump(struct Qdisc *sch, struct sk_buff *skb)
 {
-	struct skbprio_sched_data *q = qdisc_priv(sch);
 	struct tc_skbprio_qopt opt;
 
 	opt.limit = sch->limit;
